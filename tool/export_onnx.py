@@ -102,7 +102,7 @@ def main():
 
     with torch.no_grad():
 
-        MAX_VOXELS = 10000
+        MAX_VOXELS = 40000
 
         dummy_voxels = torch.zeros(
             (MAX_VOXELS, 32, 4),
@@ -152,3 +152,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # /workspace/CUDA-PointPillars# python3 tool/export_onnx.py --cfg_file /workspace/RayzGTS/perception/framework/pcdet/pointpillar.yaml  --ckpt /workspace/OpenPCDet/output/pointpillar/default_v0.16_d25k_e200/ckpt/checkpoint_epoch_200.pth --out_dir model

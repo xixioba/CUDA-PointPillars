@@ -18,32 +18,44 @@ import onnx
 import numpy as np
 import onnx_graphsurgeon as gs
 
+# 注意：feat_w 对应 Y轴(Height), feat_h 对应 X轴(Width)
+feat_w = int(248)   # 对应 range Y: [-39.68, 39.68] / 0.16 = 496
+feat_h = int(648)  # 对应 range X: [0, 207.36] / 0.16 = 1296
+downsample_factor = 2
+
 @gs.Graph.register()
 def replace_with_clip(self, inputs, outputs):
+    # 1. 清除旧节点的连接
     for inp in inputs:
         inp.outputs.clear()
 
     for out in outputs:
         out.inputs.clear()
 
+    # 2. 设置 Scatter 插件属性
     op_attrs = dict()
-    op_attrs["dense_shape"] = np.array([496,432])
+    op_attrs["dense_shape"] = np.array([feat_w, feat_h])
 
     return self.layer(name="PPScatter_0", op="PPScatterPlugin", inputs=inputs, outputs=outputs, attrs=op_attrs)
 
 def loop_node(graph, current_node, loop_time=0):
   for i in range(loop_time):
-    next_node = [node for node in graph.nodes if len(node.inputs) != 0 and len(current_node.outputs) != 0 and node.inputs[0] == current_node.outputs[0]][0]
-    current_node = next_node
+      next_node = [node for node in graph.nodes if len(node.inputs) != 0 and len(current_node.outputs) != 0 and node.inputs[0] == current_node.outputs[0]][0]
+      current_node = next_node
   return next_node
 
 def simplify_postprocess(onnx_model):
   print("Use onnx_graphsurgeon to adjust postprocessing part in the onnx...")
   graph = gs.import_onnx(onnx_model)
 
-  cls_preds = gs.Variable(name="cls_preds", dtype=np.float32, shape=(1, 248, 216, 18))
-  box_preds = gs.Variable(name="box_preds", dtype=np.float32, shape=(1, 248, 216, 42))
-  dir_cls_preds = gs.Variable(name="dir_cls_preds", dtype=np.float32, shape=(1, 248, 216, 12))
+  # 计算正确的输出尺寸 (2倍下采样)
+  out_h = int(feat_w / downsample_factor) 
+  out_w = int(feat_h / downsample_factor)
+  print(f"Post-process Output Target Shape: H={out_h}, W={out_w}")
+
+  cls_preds = gs.Variable(name="cls_preds", dtype=np.float32, shape=(1, out_h, out_w, 18))
+  box_preds = gs.Variable(name="box_preds", dtype=np.float32, shape=(1, out_h, out_w, 42))
+  dir_cls_preds = gs.Variable(name="dir_cls_preds", dtype=np.float32, shape=(1, out_h, out_w, 12))
 
   tmap = graph.tensors()
   new_inputs = [tmap["voxels"], tmap["voxel_idxs"], tmap["voxel_num"]]
@@ -70,7 +82,7 @@ def simplify_postprocess(onnx_model):
   graph.inputs = new_inputs
   graph.outputs = new_outputs
   graph.cleanup().toposort()
-  
+
   return gs.export_onnx(graph)
 
 
